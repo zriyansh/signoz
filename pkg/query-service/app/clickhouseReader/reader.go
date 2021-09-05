@@ -127,6 +127,25 @@ func connect(cfg *namespaceConfig) (*sqlx.DB, error) {
 
 	return cfg.Connector(cfg)
 }
+func (r *ClickHouseReader) GetInfrastructureListResult(time time.Time) (*[]model.InfrastructureListItem, *model.ApiError) {
+
+	infrastructureListItems := []model.InfrastructureListItem{}
+	query := "system_cpu_load_average_15m"
+
+	qry, err := r.queryEngine.NewInstantQuery(r.remoteStorage, query, time)
+	if err != nil {
+		return nil, &model.ApiError{model.ErrorBadData, err}
+	}
+
+	res := qry.Exec(context.Background())
+
+	fmt.Println(res)
+
+	qry.Close()
+
+	return &infrastructureListItems, nil
+
+}
 
 func (r *ClickHouseReader) GetInstantQueryMetricsResult(ctx context.Context, queryParams *model.InstantQueryMetricsParams) (*promql.Result, *stats.QueryStats, *model.ApiError) {
 	qry, err := r.queryEngine.NewInstantQuery(r.remoteStorage, queryParams.Query, queryParams.Time)

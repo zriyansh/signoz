@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/util/stats"
@@ -40,6 +41,10 @@ func NewReader() *DruidReader {
 
 func initialize() {
 
+}
+
+func (druid *DruidReader) GetInfrastructureListResult(time time.Time) (*[]model.InfrastructureListItem, *model.ApiError) {
+	return nil, &model.ApiError{model.ErrorNotImplemented, fmt.Errorf("Druid does not support Infrastructure metrics")}
 }
 
 func (druid *DruidReader) GetQueryRangeResult(ctx context.Context, query *model.QueryRangeParams) (*promql.Result, *stats.QueryStats, *model.ApiError) {

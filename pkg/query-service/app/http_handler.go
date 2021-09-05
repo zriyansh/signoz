@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/gorilla/mux"
 	"github.com/jmoiron/sqlx"
@@ -170,6 +171,7 @@ func (aH *APIHandler) respond(w http.ResponseWriter, data interface{}) {
 
 // RegisterRoutes registers routes for this handler on the given router
 func (aH *APIHandler) RegisterRoutes(router *mux.Router) {
+	router.HandleFunc("/api/v1/infrastructure/list", aH.infrastructureList).Methods(http.MethodGet)
 	router.HandleFunc("/api/v1/query_range", aH.queryRangeMetrics).Methods(http.MethodGet)
 	router.HandleFunc("/api/v1/query", aH.queryMetrics).Methods(http.MethodGet)
 
@@ -211,6 +213,31 @@ func Intersection(a, b []int) (c []int) {
 		}
 	}
 	return
+}
+
+func (aH *APIHandler) infrastructureList(w http.ResponseWriter, r *http.Request) {
+
+	var ts time.Time
+	if t := r.FormValue("time"); t != "" {
+		var err error
+		ts, err = parseMetricsTime(t)
+		if err != nil {
+			aH.respondError(w, &model.ApiError{model.ErrorBadData, err}, nil)
+			return
+		}
+	} else {
+		ts = time.Now()
+	}
+
+	res, apiError := (*aH.reader).GetInfrastructureListResult(ts)
+
+	if apiError != nil {
+		aH.respondError(w, apiError, nil)
+		return
+	}
+
+	aH.respond(w, res)
+
 }
 
 func (aH *APIHandler) getDashboards(w http.ResponseWriter, r *http.Request) {
