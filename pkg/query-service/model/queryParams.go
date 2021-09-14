@@ -5,6 +5,9 @@ import (
 	"time"
 )
 
+type InfrastructureListItem struct {
+}
+
 type InstantQueryMetricsParams struct {
 	Time  time.Time
 	Query string
