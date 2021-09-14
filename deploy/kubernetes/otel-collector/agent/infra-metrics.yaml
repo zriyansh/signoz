@@ -47,10 +47,13 @@ data:
         endpoint: "0.0.0.0:8889"
         resource_to_telemetry_conversion:
           enabled: true
+      otlp:
+        endpoint: "3.135.248.251:4317"
+        insecure: true
     service:
       extensions: [health_check, zpages]
       pipelines:
         metrics:
           receivers: [otlp, hostmetrics, kubeletstats]
           processors: [resourcedetection, batch]
-          exporters: [prometheus]
+          exporters: [prometheus, otlp]
