@@ -56,4 +56,4 @@ data:
         metrics:
           receivers: [otlp, hostmetrics, kubeletstats]
           processors: [resourcedetection, batch]
-          exporters: [prometheus, otlp]
+          exporters: [otlp, prometheus]
