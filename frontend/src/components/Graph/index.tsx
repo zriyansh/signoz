@@ -24,10 +24,29 @@ import chartjsAdapter from 'chartjs-adapter-date-fns';
 // import { colors } from 'lib/getRandomColor';
 // import stringToHTML from 'lib/stringToHTML';
 import React, { useCallback, useEffect, useRef } from 'react';
-import { useThemeSwitcher } from 'react-css-theme-switcher';
+import { useSelector } from 'react-redux';
+import { AppState } from 'store/reducers';
+import AppReducer from 'types/reducer/app';
 
 // import Legends from './Legend';
 // import { LegendsContainer } from './styles';
+Chart.register(
+	LineElement,
+	PointElement,
+	LineController,
+	CategoryScale,
+	LinearScale,
+	TimeScale,
+	TimeSeriesScale,
+	Decimation,
+	Filler,
+	Legend,
+	Title,
+	Tooltip,
+	SubTitle,
+	BarController,
+	BarElement,
+);
 
 const Graph = ({
 	data,
@@ -38,8 +57,9 @@ const Graph = ({
 	xAxisType,
 	onClickHandler,
 }: GraphProps): JSX.Element => {
+	const { isDarkMode } = useSelector<AppState, AppReducer>((state) => state.app);
 	const chartRef = useRef<HTMLCanvasElement>(null);
-	const { currentTheme } = useThemeSwitcher();
+	const currentTheme = isDarkMode ? 'dark' : 'light';
 
 	// const [tooltipVisible, setTooltipVisible] = useState<boolean>(false);
 	const lineChartRef = useRef<Chart>();
@@ -62,24 +82,6 @@ const Graph = ({
 		}
 
 		if (chartRef.current !== null) {
-			Chart.register(
-				LineElement,
-				PointElement,
-				LineController,
-				CategoryScale,
-				LinearScale,
-				TimeScale,
-				TimeSeriesScale,
-				Decimation,
-				Filler,
-				Legend,
-				Title,
-				Tooltip,
-				SubTitle,
-				BarController,
-				BarElement,
-			);
-
 			const options: ChartOptions = {
 				responsive: true,
 				maintainAspectRatio: false,
