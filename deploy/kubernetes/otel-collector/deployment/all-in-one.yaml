@@ -10,13 +10,11 @@ data:
       k8s_cluster:
         collection_interval: 10s
         node_conditions_to_report: [Ready, MemoryPressure]
-    # processors:
-    #   k8s_tagger:
+    processors:
+      batch:
+        send_batch_size: 1000
+        timeout: 10s
     exporters:
-      prometheus:
-        endpoint: "0.0.0.0:8889"
-        resource_to_telemetry_conversion:
-          enabled: true
       otlp:
         endpoint: "18.222.159.157:4317"
         insecure: true
@@ -24,8 +22,8 @@ data:
       pipelines:
         metrics:
           receivers: [k8s_cluster]
-          # processors: [k8s_tagger]
-          exporters: [otlp, prometheus]
+          processors: [batch]
+          exporters: [otlp]
 ---
 apiVersion: v1
 kind: ServiceAccount

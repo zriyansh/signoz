@@ -43,10 +43,6 @@ data:
       health_check: {}
       zpages: {}
     exporters:
-      prometheus:
-        endpoint: "0.0.0.0:8889"
-        resource_to_telemetry_conversion:
-          enabled: true
       otlp:
         endpoint: "18.222.159.157:4317"
         insecure: true
@@ -56,4 +52,4 @@ data:
         metrics:
           receivers: [otlp, hostmetrics, kubeletstats]
           processors: [resourcedetection, batch]
-          exporters: [otlp, prometheus]
+          exporters: [otlp]
