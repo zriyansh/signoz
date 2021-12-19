@@ -3,15 +3,15 @@
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: sa-infra-metrics
-  namespace: infra-metrics
+  name: sa-otel-agent
+  namespace: signoz-infra-metrics
 
 ---
 kind: ClusterRole
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
-  name: sa-infra-metrics-role
-  namespace: infra-metrics
+  name: sa-otel-agent-role
+  namespace: signoz-infra-metrics
 rules:
   - apiGroups: [""]
     resources: ["pods", "nodes", "endpoints"]
@@ -38,13 +38,13 @@ kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
   name: aoc-agent-role-binding
-  namespace: infra-metrics
+  namespace: signoz-infra-metrics
 subjects:
   - kind: ServiceAccount
-    name: sa-infra-metrics
-    namespace: infra-metrics
+    name: sa-otel-agent
+    namespace: signoz-infra-metrics
 
 roleRef:
   kind: ClusterRole
-  name: sa-infra-metrics-role
+  name: sa-otel-agent-role
   apiGroup: rbac.authorization.k8s.io

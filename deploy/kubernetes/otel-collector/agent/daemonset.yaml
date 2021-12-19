@@ -79,7 +79,7 @@ spec:
               - key: otel-collector-config
                 path: otel-collector-config.yaml
           name: otel-collector-config-vol
-      serviceAccountName: sa-infra-metrics
+      serviceAccountName: sa-otel-agent
 
 #        - secret:
 #            name: otel-collector-secrets

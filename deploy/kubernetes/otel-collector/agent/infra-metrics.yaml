@@ -48,7 +48,7 @@ data:
         resource_to_telemetry_conversion:
           enabled: true
       otlp:
-        endpoint: "3.135.248.251:4317"
+        endpoint: "18.222.159.157:4317"
         insecure: true
     service:
       extensions: [health_check, zpages]
