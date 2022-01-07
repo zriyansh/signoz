@@ -4,6 +4,16 @@ receivers:
       grpc:
       http:
 
+  statsd:
+    endpoint: "0.0.0.0:8125" # default
+    aggregation_interval: 10s  # default
+    enable_metric_type: false   # default
+    # is_monotonic_counter: false # default
+    timer_histogram_mapping:
+      - statsd_type: "histogram"
+        observer_type: "gauge"
+      - statsd_type: "timing"
+        observer_type: "gauge"
   # Data sources: metrics
   prometheus:
     config:
@@ -39,6 +49,6 @@ service:
   extensions: [health_check, zpages]
   pipelines:
     metrics:
-      receivers: [otlp, prometheus]
+      receivers: [otlp, statsd, prometheus]
       processors: [batch]
       exporters: [clickhousemetricswrite]

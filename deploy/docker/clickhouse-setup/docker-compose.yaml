@@ -84,7 +84,7 @@ services:
       - "13133"       # health_check
       - "8889:8889"   # prometheus exporter
     
-    mem_limit: 2000m
+    mem_limit: 500m
     restart: always
     depends_on:
       clickhouse:
@@ -95,6 +95,9 @@ services:
     command: ["--config=/etc/otel-collector-metrics-config.yaml", "--mem-ballast-size-mib=683"]
     volumes:
       - ./otel-collector-metrics-config.yaml:/etc/otel-collector-metrics-config.yaml
+    ports:
+      - "8890:8888"
+      - "8125:8125"
     depends_on:
       clickhouse:
         condition: service_healthy
@@ -124,3 +127,4 @@ services:
       LOCUST_OPTS: "--headless -u 10 -r 1"
     volumes:
       - ../common/locust-scripts:/locust
+  
