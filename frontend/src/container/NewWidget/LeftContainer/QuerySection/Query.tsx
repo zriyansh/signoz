@@ -1,25 +1,34 @@
-import { Divider } from 'antd';
+import { Button, Divider } from 'antd';
 import Input from 'components/Input';
+import TextToolTip from 'components/TextToolTip';
 import { timePreferance } from 'container/NewWidget/RightContainer/timeItems';
 import React, { useCallback, useState } from 'react';
 import { connect } from 'react-redux';
 import { useLocation } from 'react-router';
 import { bindActionCreators, Dispatch } from 'redux';
 import { ThunkDispatch } from 'redux-thunk';
+import { DeleteQuery } from 'store/actions';
 import {
 	UpdateQuery,
 	UpdateQueryProps,
 } from 'store/actions/dashboard/updateQuery';
 import AppActions from 'types/actions';
+import { DeleteQueryProps } from 'types/actions/dashboard';
 
-import { Container, InputContainer } from './styles';
+import {
+	ButtonContainer,
+	Container,
+	InputContainer,
+	QueryWrapper,
+} from './styles';
 
-const Query = ({
+function Query({
 	currentIndex,
 	preLegend,
 	preQuery,
 	updateQuery,
-}: QueryProps): JSX.Element => {
+	deleteQuery,
+}: QueryProps): JSX.Element {
 	const [promqlQuery, setPromqlQuery] = useState(preQuery);
 	const [legendFormat, setLegendFormat] = useState(preLegend);
 	const { search } = useLocation();
@@ -43,39 +52,64 @@ const Query = ({
 		});
 	};
 
-	return (
-		<Container>
-			<InputContainer>
-				<Input
-					onChangeHandler={(event): void =>
-						onChangeHandler(setPromqlQuery, event.target.value)
-					}
-					size="middle"
-					value={promqlQuery}
-					addonBefore={'PromQL Query'}
-					onBlur={(): void => onBlurHandler()}
-				/>
-			</InputContainer>
+	const onDeleteQueryHandler = (): void => {
+		deleteQuery({
+			widgetId,
+			currentIndex,
+		});
+	};
 
-			<InputContainer>
-				<Input
-					onChangeHandler={(event): void =>
-						onChangeHandler(setLegendFormat, event.target.value)
-					}
-					size="middle"
-					value={legendFormat}
-					addonBefore={'Legend Format'}
-					onBlur={(): void => onBlurHandler()}
-				/>
-			</InputContainer>
+	return (
+		<>
+			<Container>
+				<QueryWrapper>
+					<InputContainer>
+						<Input
+							onChangeHandler={(event): void =>
+								onChangeHandler(setPromqlQuery, event.target.value)
+							}
+							size="middle"
+							value={promqlQuery}
+							addonBefore="PromQL Query"
+							onBlur={(): void => onBlurHandler()}
+						/>
+					</InputContainer>
+
+					<InputContainer>
+						<Input
+							onChangeHandler={(event): void =>
+								onChangeHandler(setLegendFormat, event.target.value)
+							}
+							size="middle"
+							value={legendFormat}
+							addonBefore="Legend Format"
+							onBlur={(): void => onBlurHandler()}
+						/>
+					</InputContainer>
+				</QueryWrapper>
+
+				<ButtonContainer>
+					<Button onClick={onDeleteQueryHandler}>Delete</Button>
+					<TextToolTip
+						{...{
+							text: `More details on how to plot metrics graphs`,
+							url: 'https://signoz.io/docs/userguide/prometheus-metrics/',
+						}}
+					/>
+				</ButtonContainer>
+			</Container>
+
 			<Divider />
-		</Container>
+		</>
 	);
-};
+}
 
 interface DispatchProps {
 	updateQuery: (
 		props: UpdateQueryProps,
+	) => (dispatch: Dispatch<AppActions>) => void;
+	deleteQuery: (
+		props: DeleteQueryProps,
 	) => (dispatch: Dispatch<AppActions>) => void;
 }
 
@@ -83,6 +117,7 @@ const mapDispatchToProps = (
 	dispatch: ThunkDispatch<unknown, unknown, AppActions>,
 ): DispatchProps => ({
 	updateQuery: bindActionCreators(UpdateQuery, dispatch),
+	deleteQuery: bindActionCreators(DeleteQuery, dispatch),
 });
 
 interface QueryProps extends DispatchProps {

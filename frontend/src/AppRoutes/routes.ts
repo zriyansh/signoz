@@ -3,16 +3,22 @@ import DashboardWidget from 'pages/DashboardWidget';
 import { RouteProps } from 'react-router-dom';
 
 import {
+	AllAlertChannels,
+	CreateAlertChannelAlerts,
+	CreateNewAlerts,
 	DashboardPage,
+	EditAlertChannelsAlerts,
+	EditRulesPage,
 	InstrumentationPage,
+	ListAllALertsPage,
 	NewDashboardPage,
 	ServiceMapPage,
 	ServiceMetricsPage,
 	ServicesTablePage,
 	SettingsPage,
 	SignupPage,
-	TraceDetailPage,
-	TraceGraphPage,
+	TraceDetail,
+	TraceFilter,
 	UsageExplorerPage,
 } from './pageComponents';
 
@@ -38,9 +44,9 @@ const routes: AppRoutes[] = [
 		exact: true,
 	},
 	{
-		path: ROUTES.TRACE_GRAPH,
+		path: ROUTES.TRACE_DETAIL,
 		exact: true,
-		component: TraceGraphPage,
+		component: TraceDetail,
 	},
 	{
 		path: ROUTES.SETTINGS,
@@ -58,11 +64,6 @@ const routes: AppRoutes[] = [
 		component: InstrumentationPage,
 	},
 	{
-		path: ROUTES.TRACES,
-		exact: true,
-		component: TraceDetailPage,
-	},
-	{
 		path: ROUTES.ALL_DASHBOARD,
 		exact: true,
 		component: DashboardPage,
@@ -76,6 +77,41 @@ const routes: AppRoutes[] = [
 		path: ROUTES.DASHBOARD_WIDGET,
 		exact: true,
 		component: DashboardWidget,
+	},
+	{
+		path: ROUTES.EDIT_ALERTS,
+		exact: true,
+		component: EditRulesPage,
+	},
+	{
+		path: ROUTES.LIST_ALL_ALERT,
+		exact: true,
+		component: ListAllALertsPage,
+	},
+	{
+		path: ROUTES.ALERTS_NEW,
+		exact: true,
+		component: CreateNewAlerts,
+	},
+	{
+		path: ROUTES.TRACE,
+		exact: true,
+		component: TraceFilter,
+	},
+	{
+		path: ROUTES.CHANNELS_NEW,
+		exact: true,
+		component: CreateAlertChannelAlerts,
+	},
+	{
+		path: ROUTES.CHANNELS_EDIT,
+		exact: true,
+		component: EditAlertChannelsAlerts,
+	},
+	{
+		path: ROUTES.ALL_CHANNELS,
+		exact: true,
+		component: AllAlertChannels,
 	},
 ];
 

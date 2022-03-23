@@ -37,6 +37,14 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v2
+      - name: Install dependencies
+        run: cd frontend && yarn install
+      - name: Run Prettier
+        run: cd frontend && npm run prettify
+        continue-on-error: true
+      - name: Run ESLint
+        run: cd frontend && npm run lint
+        continue-on-error: true
       - name: Build frontend docker image
         shell: bash
         run: |
@@ -53,7 +61,7 @@ jobs:
       - name: Build  query-service image
         shell: bash
         run: |
-          make build-flattener-amd64
+          make build-query-service-amd64
 
   build-flattener:
     runs-on: ubuntu-latest
@@ -66,4 +74,4 @@ jobs:
       - name: Build flattener docker image
         shell: bash
         run: |
-          make build-query-service-amd64
+          make build-flattener-amd64

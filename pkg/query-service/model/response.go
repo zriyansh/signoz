@@ -1,11 +1,13 @@
 package model
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"strconv"
 	"time"
 
+	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/util/stats"
 )
@@ -32,6 +34,58 @@ type QueryData struct {
 	ResultType promql.ValueType  `json:"resultType"`
 	Result     promql.Value      `json:"result"`
 	Stats      *stats.QueryStats `json:"stats,omitempty"`
+}
+
+type RuleResponseItem struct {
+	Id        int       `json:"id" db:"id"`
+	UpdatedAt time.Time `json:"updated_at" db:"updated_at"`
+	Data      string    `json:"data" db:"data"`
+}
+
+type ChannelItem struct {
+	Id        int       `json:"id" db:"id"`
+	CreatedAt time.Time `json:"created_at" db:"created_at"`
+	UpdatedAt time.Time `json:"updated_at" db:"updated_at"`
+	Name      string    `json:"name" db:"name"`
+	Type      string    `json:"type" db:"type"`
+	Data      string    `json:"data" db:"data"`
+}
+
+// Receiver configuration provides configuration on how to contact a receiver.
+type Receiver struct {
+	// A unique identifier for this receiver.
+	Name string `yaml:"name" json:"name"`
+
+	EmailConfigs     interface{} `yaml:"email_configs,omitempty" json:"email_configs,omitempty"`
+	PagerdutyConfigs interface{} `yaml:"pagerduty_configs,omitempty" json:"pagerduty_configs,omitempty"`
+	SlackConfigs     interface{} `yaml:"slack_configs,omitempty" json:"slack_configs,omitempty"`
+	WebhookConfigs   interface{} `yaml:"webhook_configs,omitempty" json:"webhook_configs,omitempty"`
+	OpsGenieConfigs  interface{} `yaml:"opsgenie_configs,omitempty" json:"opsgenie_configs,omitempty"`
+	WechatConfigs    interface{} `yaml:"wechat_configs,omitempty" json:"wechat_configs,omitempty"`
+	PushoverConfigs  interface{} `yaml:"pushover_configs,omitempty" json:"pushover_configs,omitempty"`
+	VictorOpsConfigs interface{} `yaml:"victorops_configs,omitempty" json:"victorops_configs,omitempty"`
+	SNSConfigs       interface{} `yaml:"sns_configs,omitempty" json:"sns_configs,omitempty"`
+}
+
+type ReceiverResponse struct {
+	Status string   `json:"status"`
+	Data   Receiver `json:"data"`
+}
+
+// AlertDiscovery has info for all active alerts.
+type AlertDiscovery struct {
+	Alerts []*AlertingRuleResponse `json:"rules"`
+}
+
+// Alert has info for an alert.
+type AlertingRuleResponse struct {
+	Labels      labels.Labels `json:"labels"`
+	Annotations labels.Labels `json:"annotations"`
+	State       string        `json:"state"`
+	Name        string        `json:"name"`
+	Id          int           `json:"id"`
+	// ActiveAt    *time.Time    `json:"activeAt,omitempty"`
+	// Value       float64       `json:"value"`
 }
 
 type ServiceItem struct {
@@ -75,6 +129,22 @@ type SearchSpansResult struct {
 	Events  [][]interface{} `json:"events"`
 }
 
+type GetFilterSpansResponseItem struct {
+	Timestamp    string `db:"timestamp" json:"timestamp"`
+	SpanID       string `db:"spanID" json:"spanID"`
+	TraceID      string `db:"traceID" json:"traceID"`
+	ServiceName  string `db:"serviceName" json:"serviceName"`
+	Operation    string `db:"name" json:"operation"`
+	DurationNano int64  `db:"durationNano" json:"durationNano"`
+	HttpCode     string `db:"httpCode" json:"httpCode"`
+	HttpMethod   string `db:"httpMethod" json:"httpMethod"`
+}
+
+type GetFilterSpansResponse struct {
+	Spans      []GetFilterSpansResponseItem `json:"spans"`
+	TotalSpans int                          `json:"totalSpans"`
+}
+
 type TraceResult struct {
 	Data   []interface{} `json:"data" db:"data"`
 	Total  int           `json:"total" db:"total"`
@@ -108,6 +178,8 @@ type SearchSpanReponseItem struct {
 	DurationNano int64    `db:"durationNano"`
 	TagsKeys     []string `db:"tagsKeys"`
 	TagsValues   []string `db:"tagsValues"`
+	Events       []string `db:"events"`
+	HasError     int32    `db:"hasError"`
 }
 
 type OtelSpanRef struct {
@@ -134,7 +206,7 @@ func (item *SearchSpanReponseItem) GetValues() []interface{} {
 		referencesStringArray = append(referencesStringArray, item.toString())
 	}
 
-	returnArray := []interface{}{int64(timeObj.UnixNano() / 1000000), item.SpanID, item.TraceID, item.ServiceName, item.Name, strconv.Itoa(int(item.Kind)), strconv.FormatInt(item.DurationNano, 10), item.TagsKeys, item.TagsValues, referencesStringArray}
+	returnArray := []interface{}{int64(timeObj.UnixNano() / 1000000), item.SpanID, item.TraceID, item.ServiceName, item.Name, strconv.Itoa(int(item.Kind)), strconv.FormatInt(item.DurationNano, 10), item.TagsKeys, item.TagsValues, referencesStringArray, item.Events, item.HasError}
 
 	return returnArray
 }
@@ -184,6 +256,13 @@ type TagItem struct {
 	TagCount int    `json:"tagCount" db:"tagCount"`
 }
 
+type TagFilters struct {
+	TagKeys string `json:"tagKeys" db:"tagKeys"`
+}
+
+type TagValues struct {
+	TagValues string `json:"tagValues" db:"tagValues"`
+}
 type ServiceMapDependencyResponseItem struct {
 	Parent    string `json:"parent,omitempty" db:"parent,omitempty"`
 	Child     string `json:"child,omitempty" db:"child,omitempty"`
@@ -194,4 +273,125 @@ type SpanSearchAggregatesResponseItem struct {
 	Timestamp int64   `json:"timestamp,omitempty" db:"timestamp" `
 	Time      string  `json:"time,omitempty" db:"time"`
 	Value     float32 `json:"value,omitempty" db:"value"`
+}
+
+type GetFilteredSpansAggregatesResponse struct {
+	Items map[int64]SpanAggregatesResponseItem `json:"items"`
+}
+type SpanAggregatesResponseItem struct {
+	Timestamp int64              `json:"timestamp,omitempty" `
+	Value     float32            `json:"value,omitempty"`
+	GroupBy   map[string]float32 `json:"groupBy,omitempty"`
+}
+type SpanAggregatesDBResponseItem struct {
+	Timestamp int64          `json:"timestamp,omitempty" db:"timestamp" `
+	Time      string         `json:"time,omitempty" db:"time"`
+	Value     float32        `json:"value,omitempty" db:"value"`
+	GroupBy   sql.NullString `json:"groupBy,omitempty" db:"groupBy"`
+}
+
+type SetTTLResponseItem struct {
+	Message string `json:"message"`
+}
+
+type DiskItem struct {
+	Name string `json:"name,omitempty" db:"name,omitempty"`
+	Type string `json:"type,omitempty" db:"type,omitempty"`
+}
+
+type DBResponseTTL struct {
+	EngineFull string `db:"engine_full"`
+}
+
+type GetTTLResponseItem struct {
+	MetricsTime int `json:"metrics_ttl_duration_hrs"`
+	TracesTime  int `json:"traces_ttl_duration_hrs"`
+}
+
+type DBResponseMinMaxDuration struct {
+	MinDuration int `db:"min(durationNano)"`
+	MaxDuration int `db:"max(durationNano)"`
+}
+
+type DBResponseServiceName struct {
+	ServiceName string `db:"serviceName"`
+	Count       int    `db:"count"`
+}
+
+type DBResponseHttpCode struct {
+	HttpCode string `db:"httpCode"`
+	Count    int    `db:"count"`
+}
+
+type DBResponseHttpRoute struct {
+	HttpRoute string `db:"httpRoute"`
+	Count     int    `db:"count"`
+}
+
+type DBResponseHttpUrl struct {
+	HttpUrl string `db:"httpUrl"`
+	Count   int    `db:"count"`
+}
+
+type DBResponseHttpMethod struct {
+	HttpMethod string `db:"httpMethod"`
+	Count      int    `db:"count"`
+}
+
+type DBResponseHttpHost struct {
+	HttpHost string `db:"httpHost"`
+	Count    int    `db:"count"`
+}
+
+type DBResponseOperation struct {
+	Operation string `db:"name"`
+	Count     int    `db:"count"`
+}
+
+type DBResponseComponent struct {
+	Component sql.NullString `db:"component"`
+	Count     int            `db:"count"`
+}
+
+type DBResponseErrors struct {
+	NumErrors int `db:"numErrors"`
+}
+
+type DBResponseTotal struct {
+	NumTotal int `db:"numTotal"`
+}
+
+type SpanFiltersResponse struct {
+	ServiceName map[string]int `json:"serviceName"`
+	Status      map[string]int `json:"status"`
+	Duration    map[string]int `json:"duration"`
+	Operation   map[string]int `json:"operation"`
+	HttpCode    map[string]int `json:"httpCode"`
+	HttpUrl     map[string]int `json:"httpUrl"`
+	HttpMethod  map[string]int `json:"httpMethod"`
+	HttpRoute   map[string]int `json:"httpRoute"`
+	HttpHost    map[string]int `json:"httpHost"`
+	Component   map[string]int `json:"component"`
+}
+type Error struct {
+	ExceptionType  string    `json:"exceptionType" db:"exceptionType"`
+	ExceptionMsg   string    `json:"exceptionMessage" db:"exceptionMessage"`
+	ExceptionCount int64     `json:"exceptionCount" db:"exceptionCount"`
+	LastSeen       time.Time `json:"lastSeen" db:"lastSeen"`
+	FirstSeen      time.Time `json:"firstSeen" db:"firstSeen"`
+	ServiceName    string    `json:"serviceName" db:"serviceName"`
+}
+
+type ErrorWithSpan struct {
+	ErrorID            string    `json:"errorId" db:"errorID"`
+	ExceptionType      string    `json:"exceptionType" db:"exceptionType"`
+	ExcepionStacktrace string    `json:"excepionStacktrace" db:"excepionStacktrace"`
+	ExceptionEscaped   string    `json:"exceptionEscaped" db:"exceptionEscaped"`
+	ExceptionMsg       string    `json:"exceptionMessage" db:"exceptionMessage"`
+	Timestamp          time.Time `json:"timestamp" db:"timestamp"`
+	SpanID             string    `json:"spanID" db:"spanID"`
+	TraceID            string    `json:"traceID" db:"traceID"`
+	ServiceName        string    `json:"serviceName" db:"serviceName"`
+	NewerErrorID       string    `json:"newerErrorId" db:"newerErrorId"`
+	OlderErrorID       string    `json:"olderErrorId" db:"olderErrorId"`
 }

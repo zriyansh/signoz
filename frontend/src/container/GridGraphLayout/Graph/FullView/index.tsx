@@ -2,28 +2,42 @@ import { Button, Typography } from 'antd';
 import getQueryResult from 'api/widgets/getQuery';
 import { AxiosError } from 'axios';
 import { ChartData } from 'chart.js';
+import { graphOnClickHandler } from 'components/Graph';
 import Spinner from 'components/Spinner';
 import TimePreference from 'components/TimePreferenceDropDown';
 import GridGraphComponent from 'container/GridGraphComponent';
 import {
 	timeItems,
 	timePreferance,
+	timePreferenceType,
 } from 'container/NewWidget/RightContainer/timeItems';
+import convertToNanoSecondsToSecond from 'lib/convertToNanoSecondsToSecond';
 import getChartData from 'lib/getChartData';
 import GetMaxMinTime from 'lib/getMaxMinTime';
+import GetMinMax from 'lib/getMinMax';
 import getStartAndEndTime from 'lib/getStartAndEndTime';
+import getStep from 'lib/getStep';
 import React, { useCallback, useEffect, useState } from 'react';
 import { useSelector } from 'react-redux';
-import { GlobalTime } from 'store/actions';
 import { AppState } from 'store/reducers';
 import { Widgets } from 'types/api/dashboard/getAll';
+import { GlobalReducer } from 'types/reducer/globalTime';
 
-import { GraphContainer, NotFoundContainer, TimeContainer } from './styles';
+import EmptyGraph from './EmptyGraph';
+import { NotFoundContainer, TimeContainer } from './styles';
 
-const FullView = ({ widget }: FullViewProps): JSX.Element => {
-	const { minTime, maxTime } = useSelector<AppState, GlobalTime>(
-		(state) => state.globalTime,
-	);
+function FullView({
+	widget,
+	fullViewOptions = true,
+	onClickHandler,
+	noDataGraph = false,
+	name,
+	yAxisUnit,
+}: FullViewProps): JSX.Element {
+	const { minTime, maxTime, selectedTime: globalSelectedTime } = useSelector<
+		AppState,
+		GlobalReducer
+	>((state) => state.globalTime);
 
 	const [state, setState] = useState<FullViewState>({
 		error: false,
@@ -51,21 +65,37 @@ const FullView = ({ widget }: FullViewProps): JSX.Element => {
 				minTime,
 			});
 
-			const { end, start } = getStartAndEndTime({
-				type: selectedTime.enum,
-				maxTime: maxMinTime.maxTime,
-				minTime: maxMinTime.minTime,
-			});
+			const getMinMax = (time: timePreferenceType) => {
+				if (time === 'GLOBAL_TIME') {
+					const minMax = GetMinMax(globalSelectedTime);
+					return {
+						min: convertToNanoSecondsToSecond(minMax.minTime / 1000),
+						max: convertToNanoSecondsToSecond(minMax.maxTime / 1000),
+					};
+				}
 
+				const minMax = getStartAndEndTime({
+					type: selectedTime.enum,
+					maxTime: maxMinTime.maxTime,
+					minTime: maxMinTime.minTime,
+				});
+				return { min: parseInt(minMax.start, 10), max: parseInt(minMax.end, 10) };
+			};
+
+			const queryMinMax = getMinMax(selectedTime.enum);
 			const response = await Promise.all(
 				widget.query
 					.filter((e) => e.query.length !== 0)
 					.map(async (query) => {
 						const result = await getQueryResult({
-							end,
+							end: queryMinMax.max.toString(),
 							query: query.query,
-							start: start,
-							step: '30',
+							start: queryMinMax.min.toString(),
+							step: `${getStep({
+								start: queryMinMax.min,
+								end: queryMinMax.max,
+								inputFormat: 's',
+							})}`,
 						});
 						return {
 							query: query.query,
@@ -118,54 +148,87 @@ const FullView = ({ widget }: FullViewProps): JSX.Element => {
 		onFetchDataHandler();
 	}, [onFetchDataHandler]);
 
+	if (state.error && !state.loading) {
+		return (
+			<NotFoundContainer>
+				<Typography>{state.errorMessage}</Typography>
+			</NotFoundContainer>
+		);
+	}
+
 	if (state.loading || state.payload === undefined) {
-		return <Spinner height="80vh" size="large" tip="Loading..." />;
+		return (
+			<div>
+				<Spinner height="80vh" size="large" tip="Loading..." />
+			</div>
+		);
 	}
 
 	if (state.loading === false && state.payload.datasets.length === 0) {
 		return (
 			<>
-				<TimePreference
-					{...{
-						selectedTime,
-						setSelectedTime,
-					}}
-				/>
-				<NotFoundContainer>
-					<Typography>No Data</Typography>
-				</NotFoundContainer>
+				{fullViewOptions && (
+					<TimeContainer>
+						<TimePreference
+							{...{
+								selectedTime,
+								setSelectedTime,
+							}}
+						/>
+						<Button onClick={onFetchDataHandler} type="primary">
+							Refresh
+						</Button>
+					</TimeContainer>
+				)}
+
+				{noDataGraph ? (
+					<EmptyGraph
+						onClickHandler={onClickHandler}
+						widget={widget}
+						selectedTime={selectedTime}
+					/>
+				) : (
+					<NotFoundContainer>
+						<Typography>No Data</Typography>
+					</NotFoundContainer>
+				)}
 			</>
 		);
 	}
 
 	return (
 		<>
-			<TimeContainer>
-				<TimePreference
-					{...{
-						selectedTime,
-						setSelectedTime,
-					}}
-				/>
-				<Button onClick={onFetchDataHandler} type="primary">
-					Refresh
-				</Button>
-			</TimeContainer>
+			{fullViewOptions && (
+				<TimeContainer>
+					<TimePreference
+						{...{
+							selectedTime,
+							setSelectedTime,
+						}}
+					/>
+					<Button onClick={onFetchDataHandler} type="primary">
+						Refresh
+					</Button>
+				</TimeContainer>
+			)}
 
-			<GraphContainer>
-				<GridGraphComponent
-					{...{
-						GRAPH_TYPES: widget.panelTypes,
-						data: state.payload,
-						isStacked: widget.isStacked,
-						opacity: widget.opacity,
-						title: widget.title,
-					}}
-				/>
-			</GraphContainer>
+			{/* <GraphContainer> */}
+			<GridGraphComponent
+				{...{
+					GRAPH_TYPES: widget.panelTypes,
+					data: state.payload,
+					isStacked: widget.isStacked,
+					opacity: widget.opacity,
+					title: widget.title,
+					onClickHandler,
+					name,
+					yAxisUnit,
+				}}
+			/>
+			{/* </GraphContainer> */}
 		</>
 	);
-};
+}
 
 interface FullViewState {
 	loading: boolean;
@@ -176,6 +239,11 @@ interface FullViewState {
 
 interface FullViewProps {
 	widget: Widgets;
+	fullViewOptions?: boolean;
+	onClickHandler?: graphOnClickHandler;
+	noDataGraph?: boolean;
+	name: string;
+	yAxisUnit?: string;
 }
 
 export default FullView;

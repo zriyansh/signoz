@@ -4,16 +4,18 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 
 	"github.com/gorilla/mux"
-	"github.com/jmoiron/sqlx"
 	jsoniter "github.com/json-iterator/go"
 	_ "github.com/mattn/go-sqlite3"
-	"github.com/posthog/posthog-go"
 	"github.com/prometheus/prometheus/promql"
 	"go.signoz.io/query-service/app/dashboards"
+	"go.signoz.io/query-service/dao/interfaces"
 	"go.signoz.io/query-service/model"
+	"go.signoz.io/query-service/telemetry"
+	"go.signoz.io/query-service/version"
 	"go.uber.org/zap"
 )
 
@@ -33,34 +35,26 @@ func NewRouter() *mux.Router {
 type APIHandler struct {
 	// queryService *querysvc.QueryService
 	// queryParser  queryParser
-	basePath   string
-	apiPrefix  string
-	reader     *Reader
-	pc         *posthog.Client
-	distinctId string
-	db         *sqlx.DB
-	ready      func(http.HandlerFunc) http.HandlerFunc
+	basePath     string
+	apiPrefix    string
+	reader       *Reader
+	relationalDB *interfaces.ModelDao
+	ready        func(http.HandlerFunc) http.HandlerFunc
 }
 
 // NewAPIHandler returns an APIHandler
-func NewAPIHandler(reader *Reader, pc *posthog.Client, distinctId string) (*APIHandler, error) {
+func NewAPIHandler(reader *Reader, relationalDB *interfaces.ModelDao) (*APIHandler, error) {
 
 	aH := &APIHandler{
-		reader:     reader,
-		pc:         pc,
-		distinctId: distinctId,
+		reader:       reader,
+		relationalDB: relationalDB,
 	}
 	aH.ready = aH.testReady
 
-	err := dashboards.InitDB("signoz.db")
-	if err != nil {
-		return nil, err
-	}
-
-	errReadingDashboards := dashboards.LoadDashboardFiles()
-	if errReadingDashboards != nil {
-		return nil, errReadingDashboards
-	}
+	dashboards.LoadDashboardFiles()
+	// if errReadingDashboards != nil {
+	// 	return nil, errReadingDashboards
+	// }
 	return aH, nil
 }
 
@@ -172,6 +166,16 @@ func (aH *APIHandler) respond(w http.ResponseWriter, data interface{}) {
 func (aH *APIHandler) RegisterRoutes(router *mux.Router) {
 	router.HandleFunc("/api/v1/query_range", aH.queryRangeMetrics).Methods(http.MethodGet)
 	router.HandleFunc("/api/v1/query", aH.queryMetrics).Methods(http.MethodGet)
+	router.HandleFunc("/api/v1/channels", aH.listChannels).Methods(http.MethodGet)
+	router.HandleFunc("/api/v1/channels/{id}", aH.getChannel).Methods(http.MethodGet)
+	router.HandleFunc("/api/v1/channels/{id}", aH.editChannel).Methods(http.MethodPut)
+	router.HandleFunc("/api/v1/channels/{id}", aH.deleteChannel).Methods(http.MethodDelete)
+	router.HandleFunc("/api/v1/channels", aH.createChannel).Methods(http.MethodPost)
+	router.HandleFunc("/api/v1/rules", aH.listRulesFromProm).Methods(http.MethodGet)
+	router.HandleFunc("/api/v1/rules/{id}", aH.getRule).Methods(http.MethodGet)
+	router.HandleFunc("/api/v1/rules", aH.createRule).Methods(http.MethodPost)
+	router.HandleFunc("/api/v1/rules/{id}", aH.editRule).Methods(http.MethodPut)
+	router.HandleFunc("/api/v1/rules/{id}", aH.deleteRule).Methods(http.MethodDelete)
 
 	router.HandleFunc("/api/v1/dashboards", aH.getDashboards).Methods(http.MethodGet)
 	router.HandleFunc("/api/v1/dashboards", aH.createDashboards).Methods(http.MethodPost)
@@ -180,6 +184,8 @@ func (aH *APIHandler) RegisterRoutes(router *mux.Router) {
 	router.HandleFunc("/api/v1/dashboards/{uuid}", aH.deleteDashboard).Methods(http.MethodDelete)
 
 	router.HandleFunc("/api/v1/user", aH.user).Methods(http.MethodPost)
+
+	router.HandleFunc("/api/v1/feedback", aH.submitFeedback).Methods(http.MethodPost)
 	// router.HandleFunc("/api/v1/get_percentiles", aH.getApplicationPercentiles).Methods(http.MethodGet)
 	router.HandleFunc("/api/v1/services", aH.getServices).Methods(http.MethodGet)
 	router.HandleFunc("/api/v1/services/list", aH.getServicesList).Methods(http.MethodGet)
@@ -196,6 +202,24 @@ func (aH *APIHandler) RegisterRoutes(router *mux.Router) {
 	router.HandleFunc("/api/v1/traces/{traceId}", aH.searchTraces).Methods(http.MethodGet)
 	router.HandleFunc("/api/v1/usage", aH.getUsage).Methods(http.MethodGet)
 	router.HandleFunc("/api/v1/serviceMapDependencies", aH.serviceMapDependencies).Methods(http.MethodGet)
+	router.HandleFunc("/api/v1/settings/ttl", aH.setTTL).Methods(http.MethodPost)
+	router.HandleFunc("/api/v1/settings/ttl", aH.getTTL).Methods(http.MethodGet)
+
+	router.HandleFunc("/api/v1/userPreferences", aH.setUserPreferences).Methods(http.MethodPost)
+	router.HandleFunc("/api/v1/userPreferences", aH.getUserPreferences).Methods(http.MethodGet)
+	router.HandleFunc("/api/v1/version", aH.getVersion).Methods(http.MethodGet)
+
+	router.HandleFunc("/api/v1/getSpanFilters", aH.getSpanFilters).Methods(http.MethodPost)
+	router.HandleFunc("/api/v1/getTagFilters", aH.getTagFilters).Methods(http.MethodPost)
+	router.HandleFunc("/api/v1/getFilteredSpans", aH.getFilteredSpans).Methods(http.MethodPost)
+	router.HandleFunc("/api/v1/getFilteredSpans/aggregates", aH.getFilteredSpanAggregates).Methods(http.MethodPost)
+
+	router.HandleFunc("/api/v1/getTagValues", aH.getTagValues).Methods(http.MethodPost)
+	router.HandleFunc("/api/v1/errors", aH.getErrors).Methods(http.MethodGet)
+	router.HandleFunc("/api/v1/errorWithId", aH.getErrorForId).Methods(http.MethodGet)
+	router.HandleFunc("/api/v1/errorWithType", aH.getErrorForType).Methods(http.MethodGet)
+
+	router.HandleFunc("/api/v1/disks", aH.getDisks).Methods(http.MethodGet)
 }
 
 func Intersection(a, b []int) (c []int) {
@@ -211,6 +235,25 @@ func Intersection(a, b []int) (c []int) {
 		}
 	}
 	return
+}
+
+func (aH *APIHandler) getRule(w http.ResponseWriter, r *http.Request) {
+	id := mux.Vars(r)["id"]
+	alertList, apiErrorObj := (*aH.reader).GetRule(id)
+	if apiErrorObj != nil {
+		aH.respondError(w, apiErrorObj, nil)
+		return
+	}
+	aH.respond(w, alertList)
+}
+
+func (aH *APIHandler) listRulesFromProm(w http.ResponseWriter, r *http.Request) {
+	alertList, apiErrorObj := (*aH.reader).ListRulesFromProm()
+	if apiErrorObj != nil {
+		aH.respondError(w, apiErrorObj, nil)
+		return
+	}
+	aH.respond(w, alertList)
 }
 
 func (aH *APIHandler) getDashboards(w http.ResponseWriter, r *http.Request) {
@@ -349,6 +392,150 @@ func (aH *APIHandler) createDashboards(w http.ResponseWriter, r *http.Request) {
 
 }
 
+func (aH *APIHandler) deleteRule(w http.ResponseWriter, r *http.Request) {
+	id := mux.Vars(r)["id"]
+
+	apiErrorObj := (*aH.reader).DeleteRule(id)
+
+	if apiErrorObj != nil {
+		aH.respondError(w, apiErrorObj, nil)
+		return
+	}
+
+	aH.respond(w, "rule successfully deleted")
+
+}
+func (aH *APIHandler) editRule(w http.ResponseWriter, r *http.Request) {
+	id := mux.Vars(r)["id"]
+
+	var postData map[string]string
+	err := json.NewDecoder(r.Body).Decode(&postData)
+	if err != nil {
+		aH.respondError(w, &model.ApiError{Typ: model.ErrorBadData, Err: err}, "Error reading request body")
+		return
+	}
+
+	apiErrorObj := (*aH.reader).EditRule(postData["data"], id)
+
+	if apiErrorObj != nil {
+		aH.respondError(w, apiErrorObj, nil)
+		return
+	}
+
+	aH.respond(w, "rule successfully edited")
+
+}
+
+func (aH *APIHandler) getChannel(w http.ResponseWriter, r *http.Request) {
+	id := mux.Vars(r)["id"]
+	channel, apiErrorObj := (*aH.reader).GetChannel(id)
+	if apiErrorObj != nil {
+		aH.respondError(w, apiErrorObj, nil)
+		return
+	}
+	aH.respond(w, channel)
+}
+
+func (aH *APIHandler) deleteChannel(w http.ResponseWriter, r *http.Request) {
+	id := mux.Vars(r)["id"]
+	apiErrorObj := (*aH.reader).DeleteChannel(id)
+	if apiErrorObj != nil {
+		aH.respondError(w, apiErrorObj, nil)
+		return
+	}
+	aH.respond(w, "notification channel successfully deleted")
+}
+
+func (aH *APIHandler) listChannels(w http.ResponseWriter, r *http.Request) {
+	channels, apiErrorObj := (*aH.reader).GetChannels()
+	if apiErrorObj != nil {
+		aH.respondError(w, apiErrorObj, nil)
+		return
+	}
+	aH.respond(w, channels)
+}
+
+func (aH *APIHandler) editChannel(w http.ResponseWriter, r *http.Request) {
+
+	id := mux.Vars(r)["id"]
+
+	defer r.Body.Close()
+	body, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		zap.S().Errorf("Error in getting req body of editChannel API\n", err)
+		aH.respondError(w, &model.ApiError{Typ: model.ErrorBadData, Err: err}, nil)
+		return
+	}
+
+	receiver := &model.Receiver{}
+	if err := json.Unmarshal(body, receiver); err != nil { // Parse []byte to go struct pointer
+		zap.S().Errorf("Error in parsing req body of editChannel API\n", err)
+		aH.respondError(w, &model.ApiError{Typ: model.ErrorBadData, Err: err}, nil)
+		return
+	}
+
+	_, apiErrorObj := (*aH.reader).EditChannel(receiver, id)
+
+	if apiErrorObj != nil {
+		aH.respondError(w, apiErrorObj, nil)
+		return
+	}
+
+	aH.respond(w, nil)
+
+}
+
+func (aH *APIHandler) createChannel(w http.ResponseWriter, r *http.Request) {
+
+	defer r.Body.Close()
+	body, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		zap.S().Errorf("Error in getting req body of createChannel API\n", err)
+		aH.respondError(w, &model.ApiError{Typ: model.ErrorBadData, Err: err}, nil)
+		return
+	}
+
+	receiver := &model.Receiver{}
+	if err := json.Unmarshal(body, receiver); err != nil { // Parse []byte to go struct pointer
+		zap.S().Errorf("Error in parsing req body of createChannel API\n", err)
+		aH.respondError(w, &model.ApiError{Typ: model.ErrorBadData, Err: err}, nil)
+		return
+	}
+
+	_, apiErrorObj := (*aH.reader).CreateChannel(receiver)
+
+	if apiErrorObj != nil {
+		aH.respondError(w, apiErrorObj, nil)
+		return
+	}
+
+	aH.respond(w, nil)
+
+}
+
+func (aH *APIHandler) createRule(w http.ResponseWriter, r *http.Request) {
+
+	decoder := json.NewDecoder(r.Body)
+
+	var postData map[string]string
+	err := decoder.Decode(&postData)
+
+	if err != nil {
+		aH.respondError(w, &model.ApiError{Typ: model.ErrorBadData, Err: err}, nil)
+		return
+	}
+
+	apiErrorObj := (*aH.reader).CreateRule(postData["data"])
+
+	if apiErrorObj != nil {
+		aH.respondError(w, apiErrorObj, nil)
+		return
+	}
+
+	aH.respond(w, "rule successfully added")
+
+}
+
 func (aH *APIHandler) queryRangeMetrics(w http.ResponseWriter, r *http.Request) {
 
 	query, apiErrorObj := parseQueryRangeRequest(r)
@@ -457,22 +644,52 @@ func (aH *APIHandler) queryMetrics(w http.ResponseWriter, r *http.Request) {
 
 }
 
-func (aH *APIHandler) user(w http.ResponseWriter, r *http.Request) {
-	email := r.URL.Query().Get("email")
+func (aH *APIHandler) submitFeedback(w http.ResponseWriter, r *http.Request) {
 
-	var err error
-	if len(email) == 0 {
-		err = fmt.Errorf("Email param is missing")
-	}
-	if aH.handleError(w, err, http.StatusBadRequest) {
+	var postData map[string]interface{}
+	err := json.NewDecoder(r.Body).Decode(&postData)
+	if err != nil {
+		aH.respondError(w, &model.ApiError{Typ: model.ErrorBadData, Err: err}, "Error reading request body")
 		return
 	}
 
-	(*aH.pc).Enqueue(posthog.Identify{
-		DistinctId: aH.distinctId,
-		Properties: posthog.NewProperties().
-			Set("email", email),
-	})
+	message, ok := postData["message"]
+	if !ok {
+		aH.respondError(w, &model.ApiError{Typ: model.ErrorBadData, Err: fmt.Errorf("message not present in request body")}, "Error reading message from request body")
+		return
+	}
+	messageStr := fmt.Sprintf("%s", message)
+	if len(messageStr) == 0 {
+		aH.respondError(w, &model.ApiError{Typ: model.ErrorBadData, Err: fmt.Errorf("empty message in request body")}, "empty message in request body")
+		return
+	}
+
+	email := postData["email"]
+
+	data := map[string]interface{}{
+		"email":   email,
+		"message": message,
+	}
+	telemetry.GetInstance().SendEvent(telemetry.TELEMETRY_EVENT_INPRODUCT_FEEDBACK, data)
+
+}
+
+func (aH *APIHandler) user(w http.ResponseWriter, r *http.Request) {
+
+	user, err := parseUser(r)
+	if err != nil {
+		if aH.handleError(w, err, http.StatusBadRequest) {
+			return
+		}
+	}
+
+	telemetry.GetInstance().IdentifyUser(user)
+	data := map[string]interface{}{
+		"name":             user.Name,
+		"email":            user.Email,
+		"organizationName": user.OrganizationName,
+	}
+	telemetry.GetInstance().SendEvent(telemetry.TELEMETRY_EVENT_USER, data)
 
 }
 
@@ -647,13 +864,12 @@ func (aH *APIHandler) getServices(w http.ResponseWriter, r *http.Request) {
 	if aH.handleError(w, err, http.StatusBadRequest) {
 		return
 	}
-	if len(*result) != 4 {
-		(*aH.pc).Enqueue(posthog.Capture{
-			DistinctId: distinctId,
-			Event:      "Different Number of Services",
-			Properties: posthog.NewProperties().Set("number", len(*result)),
-		})
+
+	data := map[string]interface{}{
+		"number": len(*result),
 	}
+
+	telemetry.GetInstance().SendEvent(telemetry.TELEMETRY_EVENT_NUMBER_OF_SERVICES, data)
 
 	aH.writeJSON(w, r, result)
 }
@@ -680,6 +896,51 @@ func (aH *APIHandler) searchTraces(w http.ResponseWriter, r *http.Request) {
 
 	result, err := (*aH.reader).SearchTraces(context.Background(), traceId)
 	if aH.handleError(w, err, http.StatusBadRequest) {
+		return
+	}
+
+	aH.writeJSON(w, r, result)
+
+}
+
+func (aH *APIHandler) getErrors(w http.ResponseWriter, r *http.Request) {
+
+	query, err := parseErrorsRequest(r)
+	if aH.handleError(w, err, http.StatusBadRequest) {
+		return
+	}
+	result, apiErr := (*aH.reader).GetErrors(context.Background(), query)
+	if apiErr != nil && aH.handleError(w, apiErr.Err, http.StatusInternalServerError) {
+		return
+	}
+
+	aH.writeJSON(w, r, result)
+
+}
+
+func (aH *APIHandler) getErrorForId(w http.ResponseWriter, r *http.Request) {
+
+	query, err := parseErrorRequest(r)
+	if aH.handleError(w, err, http.StatusBadRequest) {
+		return
+	}
+	result, apiErr := (*aH.reader).GetErrorForId(context.Background(), query)
+	if apiErr != nil && aH.handleError(w, apiErr.Err, http.StatusInternalServerError) {
+		return
+	}
+
+	aH.writeJSON(w, r, result)
+
+}
+
+func (aH *APIHandler) getErrorForType(w http.ResponseWriter, r *http.Request) {
+
+	query, err := parseErrorRequest(r)
+	if aH.handleError(w, err, http.StatusBadRequest) {
+		return
+	}
+	result, apiErr := (*aH.reader).GetErrorForType(context.Background(), query)
+	if apiErr != nil && aH.handleError(w, apiErr.Err, http.StatusInternalServerError) {
 		return
 	}
 
@@ -717,6 +978,163 @@ func (aH *APIHandler) searchSpans(w http.ResponseWriter, r *http.Request) {
 	}
 
 	aH.writeJSON(w, r, result)
+}
+
+func (aH *APIHandler) getSpanFilters(w http.ResponseWriter, r *http.Request) {
+
+	query, err := parseSpanFilterRequestBody(r)
+	if aH.handleError(w, err, http.StatusBadRequest) {
+		return
+	}
+
+	result, apiErr := (*aH.reader).GetSpanFilters(context.Background(), query)
+
+	if apiErr != nil && aH.handleError(w, apiErr.Err, http.StatusInternalServerError) {
+		return
+	}
+
+	aH.writeJSON(w, r, result)
+}
+
+func (aH *APIHandler) getFilteredSpans(w http.ResponseWriter, r *http.Request) {
+
+	query, err := parseFilteredSpansRequest(r)
+	if aH.handleError(w, err, http.StatusBadRequest) {
+		return
+	}
+
+	result, apiErr := (*aH.reader).GetFilteredSpans(context.Background(), query)
+
+	if apiErr != nil && aH.handleError(w, apiErr.Err, http.StatusInternalServerError) {
+		return
+	}
+
+	aH.writeJSON(w, r, result)
+}
+
+func (aH *APIHandler) getFilteredSpanAggregates(w http.ResponseWriter, r *http.Request) {
+
+	query, err := parseFilteredSpanAggregatesRequest(r)
+	if aH.handleError(w, err, http.StatusBadRequest) {
+		return
+	}
+
+	result, apiErr := (*aH.reader).GetFilteredSpansAggregates(context.Background(), query)
+
+	if apiErr != nil && aH.handleError(w, apiErr.Err, http.StatusInternalServerError) {
+		return
+	}
+
+	aH.writeJSON(w, r, result)
+}
+
+func (aH *APIHandler) getTagFilters(w http.ResponseWriter, r *http.Request) {
+
+	query, err := parseTagFilterRequest(r)
+	if aH.handleError(w, err, http.StatusBadRequest) {
+		return
+	}
+
+	result, apiErr := (*aH.reader).GetTagFilters(context.Background(), query)
+
+	if apiErr != nil && aH.handleError(w, apiErr.Err, http.StatusInternalServerError) {
+		return
+	}
+
+	aH.writeJSON(w, r, result)
+}
+
+func (aH *APIHandler) getTagValues(w http.ResponseWriter, r *http.Request) {
+
+	query, err := parseTagValueRequest(r)
+	if aH.handleError(w, err, http.StatusBadRequest) {
+		return
+	}
+
+	result, apiErr := (*aH.reader).GetTagValues(context.Background(), query)
+
+	if apiErr != nil && aH.handleError(w, apiErr.Err, http.StatusInternalServerError) {
+		return
+	}
+
+	aH.writeJSON(w, r, result)
+}
+
+func (aH *APIHandler) setTTL(w http.ResponseWriter, r *http.Request) {
+	ttlParams, err := parseTTLParams(r)
+	if aH.handleError(w, err, http.StatusBadRequest) {
+		return
+	}
+
+	result, apiErr := (*aH.reader).SetTTL(context.Background(), ttlParams)
+	if apiErr != nil && aH.handleError(w, apiErr.Err, http.StatusInternalServerError) {
+		return
+	}
+
+	aH.writeJSON(w, r, result)
+
+}
+
+func (aH *APIHandler) getTTL(w http.ResponseWriter, r *http.Request) {
+	ttlParams, err := parseGetTTL(r)
+	if aH.handleError(w, err, http.StatusBadRequest) {
+		return
+	}
+
+	result, apiErr := (*aH.reader).GetTTL(context.Background(), ttlParams)
+	if apiErr != nil && aH.handleError(w, apiErr.Err, http.StatusInternalServerError) {
+		return
+	}
+
+	aH.writeJSON(w, r, result)
+}
+
+func (aH *APIHandler) getDisks(w http.ResponseWriter, r *http.Request) {
+	result, apiErr := (*aH.reader).GetDisks(context.Background())
+	if apiErr != nil && aH.handleError(w, apiErr.Err, http.StatusInternalServerError) {
+		return
+	}
+
+	aH.writeJSON(w, r, result)
+}
+
+func (aH *APIHandler) getUserPreferences(w http.ResponseWriter, r *http.Request) {
+
+	result, apiError := (*aH.relationalDB).FetchUserPreference(context.Background())
+	if apiError != nil {
+		aH.respondError(w, apiError, "Error from Fetch Dao")
+		return
+	}
+
+	aH.writeJSON(w, r, result)
+}
+
+func (aH *APIHandler) setUserPreferences(w http.ResponseWriter, r *http.Request) {
+	userParams, err := parseUserPreferences(r)
+	if aH.handleError(w, err, http.StatusBadRequest) {
+		return
+	}
+
+	apiErr := (*aH.relationalDB).UpdateUserPreferece(context.Background(), userParams)
+	if apiErr != nil && aH.handleError(w, apiErr.Err, http.StatusInternalServerError) {
+		return
+	}
+
+	data := map[string]interface{}{
+		"hasOptedUpdates": userParams.HasOptedUpdates,
+		"isAnonymous":     userParams.IsAnonymous,
+	}
+	telemetry.GetInstance().SendEvent(telemetry.TELEMETRY_EVENT_USER_PREFERENCES, data)
+
+	aH.writeJSON(w, r, map[string]string{"data": "user preferences set successfully"})
+
+}
+
+func (aH *APIHandler) getVersion(w http.ResponseWriter, r *http.Request) {
+
+	version := version.GetVersion()
+
+	aH.writeJSON(w, r, map[string]string{"version": version})
 }
 
 // func (aH *APIHandler) getApplicationPercentiles(w http.ResponseWriter, r *http.Request) {

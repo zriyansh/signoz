@@ -1,49 +1,72 @@
 import {
+	ActiveElement,
 	BarController,
 	BarElement,
 	CategoryScale,
 	Chart,
+	ChartData,
+	ChartEvent,
 	ChartOptions,
 	ChartType,
 	Decimation,
 	Filler,
 	Legend,
-	// LegendItem,
 	LinearScale,
 	LineController,
 	LineElement,
 	PointElement,
-	ScaleOptions,
 	SubTitle,
 	TimeScale,
 	TimeSeriesScale,
 	Title,
 	Tooltip,
 } from 'chart.js';
-import chartjsAdapter from 'chartjs-adapter-date-fns';
-// import { colors } from 'lib/getRandomColor';
-// import stringToHTML from 'lib/stringToHTML';
+import * as chartjsAdapter from 'chartjs-adapter-date-fns';
 import React, { useCallback, useEffect, useRef } from 'react';
-import { useThemeSwitcher } from 'react-css-theme-switcher';
+import { useSelector } from 'react-redux';
+import { AppState } from 'store/reducers';
+import AppReducer from 'types/reducer/app';
 
-// import Legends from './Legend';
-// import { LegendsContainer } from './styles';
+import { legend } from './Plugin';
+import { LegendsContainer } from './styles';
+import { useXAxisTimeUnit } from './xAxisConfig';
+import { getYAxisFormattedValue } from './yAxisConfig';
 
-const Graph = ({
+Chart.register(
+	LineElement,
+	PointElement,
+	LineController,
+	CategoryScale,
+	LinearScale,
+	TimeScale,
+	TimeSeriesScale,
+	Decimation,
+	Filler,
+	Legend,
+	Title,
+	Tooltip,
+	SubTitle,
+	BarController,
+	BarElement,
+);
+
+function Graph({
+	animate = true,
 	data,
 	type,
 	title,
 	isStacked,
-	label,
-	xAxisType,
 	onClickHandler,
-}: GraphProps): JSX.Element => {
+	name,
+	yAxisUnit = 'short',
+	forceReRender,
+}: GraphProps): JSX.Element {
+	const { isDarkMode } = useSelector<AppState, AppReducer>((state) => state.app);
 	const chartRef = useRef<HTMLCanvasElement>(null);
-	const { currentTheme } = useThemeSwitcher();
+	const currentTheme = isDarkMode ? 'dark' : 'light';
+	const xAxisTimeUnit = useXAxisTimeUnit(data); // Computes the relevant time unit for x axis by analyzing the time stamp data
 
-	// const [tooltipVisible, setTooltipVisible] = useState<boolean>(false);
 	const lineChartRef = useRef<Chart>();
-
 	const getGridColor = useCallback(() => {
 		if (currentTheme === undefined) {
 			return 'rgba(231,233,237,0.1)';
@@ -62,25 +85,10 @@ const Graph = ({
 		}
 
 		if (chartRef.current !== null) {
-			Chart.register(
-				LineElement,
-				PointElement,
-				LineController,
-				CategoryScale,
-				LinearScale,
-				TimeScale,
-				TimeSeriesScale,
-				Decimation,
-				Filler,
-				Legend,
-				Title,
-				Tooltip,
-				SubTitle,
-				BarController,
-				BarElement,
-			);
-
 			const options: ChartOptions = {
+				animation: {
+					duration: animate ? 200 : 0,
+				},
 				responsive: true,
 				maintainAspectRatio: false,
 				interaction: {
@@ -89,31 +97,11 @@ const Graph = ({
 				},
 				plugins: {
 					title: {
-						display: title === undefined ? false : true,
+						display: title !== undefined,
 						text: title,
 					},
 					legend: {
-						// just making sure that label is present
-						display: !(
-							data.datasets.find((e) => e.label !== undefined) === undefined
-						),
-						labels: {
-							usePointStyle: true,
-							pointStyle: 'circle',
-						},
-						position: 'bottom',
-						// labels: {
-						// 	generateLabels: (chart: Chart): LegendItem[] => {
-						// 		return (data.datasets || []).map((e, index) => {
-						// 			return {
-						// 				text: e.label || '',
-						// 				datasetIndex: index,
-						// 			};
-						// 		});
-						// 	},
-						// 	pointStyle: 'circle',
-						// 	usePointStyle: true,
-						// },
+						display: false,
 					},
 				},
 				layout: {
@@ -121,22 +109,40 @@ const Graph = ({
 				},
 				scales: {
 					x: {
-						animate: false,
 						grid: {
 							display: true,
 							color: getGridColor(),
 						},
-						labels: label,
 						adapters: {
 							date: chartjsAdapter,
 						},
-						type: xAxisType,
+						time: {
+							unit: xAxisTimeUnit?.unitName || 'minute',
+							stepSize: xAxisTimeUnit?.stepSize || 1,
+							displayFormats: {
+								millisecond: 'HH:mm:ss',
+								second: 'HH:mm:ss',
+								minute: 'HH:mm',
+								hour: 'MM/dd HH:mm',
+								day: 'MM/dd',
+								week: 'MM/dd',
+								month: 'yy-MM',
+								year: 'yy',
+							},
+						},
+						type: 'time',
 					},
 					y: {
 						display: true,
 						grid: {
 							display: true,
 							color: getGridColor(),
+						},
+						ticks: {
+							// Include a dollar sign in the ticks
+							callback(value, index, ticks) {
+								return getYAxisFormattedValue(value, yAxisUnit);
+							},
 						},
 					},
 					stacked: {
@@ -149,87 +155,64 @@ const Graph = ({
 						cubicInterpolationMode: 'monotone',
 					},
 				},
-				onClick: onClickHandler,
+				onClick: (event, element, chart) => {
+					if (onClickHandler) {
+						onClickHandler(event, element, chart, data);
+					}
+				},
 			};
 
 			lineChartRef.current = new Chart(chartRef.current, {
-				type: type,
-				data: data,
+				type,
+				data,
 				options,
-				// plugins: [
-				// 	{
-				// 		id: 'htmlLegendPlugin',
-				// 		afterUpdate: (chart: Chart): void => {
-				// 			if (
-				// 				chart &&
-				// 				chart.options &&
-				// 				chart.options.plugins &&
-				// 				chart.options.plugins.legend &&
-				// 				chart.options.plugins.legend.labels &&
-				// 				chart.options.plugins.legend.labels.generateLabels
-				// 			) {
-				// 				const labels = chart.options.plugins?.legend?.labels?.generateLabels(
-				// 					chart,
-				// 				);
-
-				// 				const id = 'htmlLegend';
-
-				// 				const response = document.getElementById(id);
-
-				// 				if (labels && response && response?.childNodes.length === 0) {
-				// 					const labelComponent = labels.map((e, index) => {
-				// 						return {
-				// 							element: Legends({
-				// 								text: e.text,
-				// 								color: colors[index] || 'white',
-				// 							}),
-				// 							dataIndex: e.datasetIndex,
-				// 						};
-				// 					});
-
-				// 					labelComponent.map((e) => {
-				// 						const el = stringToHTML(e.element);
-
-				// 						if (el) {
-				// 							el.addEventListener('click', () => {
-				// 								chart.setDatasetVisibility(
-				// 									e.dataIndex,
-				// 									!chart.isDatasetVisible(e.dataIndex),
-				// 								);
-				// 								chart.update();
-				// 							});
-				// 							response.append(el);
-				// 						}
-				// 					});
-				// 				}
-				// 			}
-				// 		},
-				// 	},
-				// ],
+				plugins: [legend(name, data.datasets.length > 3)],
 			});
 		}
-	}, [chartRef, data, type, title, isStacked, label, xAxisType, getGridColor]);
+	}, [
+		animate,
+		title,
+		getGridColor,
+		xAxisTimeUnit?.unitName,
+		xAxisTimeUnit?.stepSize,
+		isStacked,
+		type,
+		data,
+		name,
+		yAxisUnit,
+		onClickHandler,
+	]);
 
 	useEffect(() => {
 		buildChart();
-	}, [buildChart]);
+	}, [buildChart, forceReRender]);
 
 	return (
-		<>
+		<div style={{ height: '85%' }}>
 			<canvas ref={chartRef} />
-			{/* <LegendsContainer id="htmlLegend" /> */}
-		</>
+			<LegendsContainer id={name} />
+		</div>
 	);
-};
+}
 
 interface GraphProps {
+	animate?: boolean;
 	type: ChartType;
 	data: Chart['data'];
 	title?: string;
 	isStacked?: boolean;
 	label?: string[];
-	xAxisType?: ScaleOptions['type'];
-	onClickHandler?: ChartOptions['onClick'];
+	onClickHandler?: graphOnClickHandler;
+	name: string;
+	yAxisUnit?: string;
+	forceReRender?: boolean | null | number;
 }
+
+export type graphOnClickHandler = (
+	event: ChartEvent,
+	elements: ActiveElement[],
+	chart: Chart,
+	data: ChartData,
+) => void;
 
 export default Graph;

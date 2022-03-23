@@ -2,7 +2,7 @@ import updateDashboardApi from 'api/dashboard/update';
 import { AxiosError } from 'axios';
 import ROUTES from 'constants/routes';
 import history from 'lib/history';
-import updateUrl from 'lib/updateUrl';
+import { generatePath } from 'react-router-dom';
 import { Dispatch } from 'redux';
 import store from 'store';
 import AppActions from 'types/actions';
@@ -31,7 +31,7 @@ export const SaveDashboard = ({
 				throw new Error('Dashboard Not Found');
 			}
 
-			const data = selectedDashboard.data;
+			const { data } = selectedDashboard;
 
 			const updatedTitle = title;
 			const updatedDescription = description;
@@ -55,6 +55,7 @@ export const SaveDashboard = ({
 			];
 
 			const response = await updateDashboardApi({
+				...selectedDashboard.data,
 				uuid,
 				// this is the data for the dashboard
 				title: selectedDashboard.data.title,
@@ -73,6 +74,15 @@ export const SaveDashboard = ({
 						opacity: updatedopacity,
 						title: updatedTitle,
 						timePreferance: updatedtimePreferance,
+						queryData: {
+							...selectedWidget.queryData,
+							data: [
+								...selectedWidget.queryData.data.map((e) => ({
+									...e,
+									queryData: [],
+								})),
+							],
+						},
 					},
 					...afterWidget,
 				],
@@ -83,7 +93,7 @@ export const SaveDashboard = ({
 					type: 'SAVE_SETTING_TO_PANEL_SUCCESS',
 					payload: response.payload,
 				});
-				history.push(updateUrl(ROUTES.DASHBOARD, ':dashboardId', dashboardId));
+				history.push(generatePath(ROUTES.DASHBOARD, { dashboardId }));
 			} else {
 				dispatch({
 					type: 'SAVE_SETTING_TO_PANEL_ERROR',
@@ -113,4 +123,5 @@ export interface SaveDashboardProps {
 	nullZeroValues: Widgets['nullZeroValues'];
 	widgetId: Widgets['id'];
 	dashboardId: string;
+	yAxisUnit: Widgets['yAxisUnit'];
 }

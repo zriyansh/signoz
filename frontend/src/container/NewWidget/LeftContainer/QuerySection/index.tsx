@@ -1,5 +1,4 @@
 import { PlusOutlined } from '@ant-design/icons';
-import Spinner from 'components/Spinner';
 import { timePreferance } from 'container/NewWidget/RightContainer/timeItems';
 import React, { useCallback, useMemo } from 'react';
 import { connect, useSelector } from 'react-redux';
@@ -15,16 +14,13 @@ import DashboardReducer from 'types/reducer/dashboards';
 import Query from './Query';
 import { QueryButton } from './styles';
 
-const QuerySection = ({
-	selectedTime,
-	createQuery,
-}: QueryProps): JSX.Element => {
+function QuerySection({ selectedTime, createQuery }: QueryProps): JSX.Element {
 	const { dashboards } = useSelector<AppState, DashboardReducer>(
 		(state) => state.dashboards,
 	);
 	const [selectedDashboards] = dashboards;
 	const { search } = useLocation();
-	const widgets = selectedDashboards.data.widgets;
+	const { widgets } = selectedDashboards.data;
 
 	const urlQuery = useMemo(() => {
 		return new URLSearchParams(search);
@@ -47,17 +43,13 @@ const QuerySection = ({
 		});
 	}, [createQuery, urlQuery]);
 
-	if (query.length === 0) {
-		return <Spinner size="small" height="30vh" tip="Loading..." />;
-	}
-
 	return (
-		<div>
+		<>
 			{query.map((e, index) => (
 				<Query
 					currentIndex={index}
 					selectedTime={selectedTime}
-					key={e.query + index}
+					key={`${e.query} ${e.query.length}`}
 					preQuery={e.query}
 					preLegend={e.legend || ''}
 				/>
@@ -66,9 +58,9 @@ const QuerySection = ({
 			<QueryButton onClick={queryOnClickHandler} icon={<PlusOutlined />}>
 				Query
 			</QueryButton>
-		</div>
+		</>
 	);
-};
+}
 
 interface DispatchProps {
 	createQuery: ({

@@ -1,7 +1,7 @@
 import api from 'api';
 import { Dispatch } from 'redux';
+import { GlobalTime } from 'types/actions/globalTime';
 
-import { GlobalTime } from './global';
 import { ActionTypes } from './types';
 
 export interface serviceMapStore {
@@ -38,17 +38,13 @@ export interface servicesAction {
 }
 
 export const getServiceMapItems = (globalTime: GlobalTime) => {
-	return async (dispatch: Dispatch) => {
+	return async (dispatch: Dispatch): Promise<void> => {
 		dispatch<serviceMapItemAction>({
 			type: ActionTypes.getServiceMapItems,
 			payload: [],
 		});
 
-		const request_string =
-			'/serviceMapDependencies?start=' +
-			globalTime.minTime +
-			'&end=' +
-			globalTime.maxTime;
+		const request_string = `/serviceMapDependencies?start=${globalTime.minTime}&end=${globalTime.maxTime}`;
 
 		const response = await api.get<servicesMapItem[]>(request_string);
 
@@ -60,14 +56,13 @@ export const getServiceMapItems = (globalTime: GlobalTime) => {
 };
 
 export const getDetailedServiceMapItems = (globalTime: GlobalTime) => {
-	return async (dispatch: Dispatch) => {
+	return async (dispatch: Dispatch): Promise<void> => {
 		dispatch<servicesAction>({
 			type: ActionTypes.getServices,
 			payload: [],
 		});
 
-		const request_string =
-			'/services?start=' + globalTime.minTime + '&end=' + globalTime.maxTime;
+		const request_string = `/services?start=${globalTime.minTime}&end=${globalTime.maxTime}`;
 
 		const response = await api.get<servicesItem[]>(request_string);
 
